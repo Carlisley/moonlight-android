@@ -5,6 +5,7 @@ import android.Manifest;
 import com.limelight.binding.PlatformBinding;
 import com.limelight.binding.audio.AndroidAudioRenderer;
 import com.limelight.binding.input.ControllerHandler;
+import com.limelight.binding.input.HarmonyMouseButtonFixer;
 import com.limelight.binding.input.KeyboardTranslator;
 import com.limelight.binding.input.StylusInputRouter;
 import com.limelight.binding.input.TouchpadRotation;
@@ -200,6 +201,11 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     }
 
     private int lastButtonState = 0;
+    private final HarmonyMouseButtonFixer harmonyMouseFix = new HarmonyMouseButtonFixer();
+    private long harmonyBackConsumedAt;
+    private Toast streamInputDebugToast;
+    private String lastStreamInputDebugText;
+    private long lastStreamInputDebugAt;
     private float externalTouchpadScrollRemainderX = 0f;
     private float externalTouchpadScrollRemainderY = 0f;
 
@@ -2662,6 +2668,145 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                 || device.getKeyboardType() == InputDevice.KEYBOARD_TYPE_ALPHABETIC;
     }
 
+    private boolean huaweiMouseFixEnabled() {
+        return PreferenceManager.getDefaultSharedPreferences(this)
+                .getBoolean(PreferenceConfiguration.HUAWEI_MOUSE_BUTTON_FIX_PREF_STRING, false);
+    }
+
+    private boolean streamInputDebugEnabled() {
+        return PreferenceManager.getDefaultSharedPreferences(this)
+                .getBoolean(PreferenceConfiguration.STREAM_INPUT_DEBUG_PREF_STRING, false);
+    }
+
+    private void showStreamInputDebug(String message) {
+        if (!streamInputDebugEnabled()) {
+            return;
+        }
+        long now = SystemClock.uptimeMillis();
+        if (message.equals(lastStreamInputDebugText) && now - lastStreamInputDebugAt < 400) {
+            return;
+        }
+        lastStreamInputDebugText = message;
+        lastStreamInputDebugAt = now;
+        Log.i("MouseDebug", message);
+        if (streamInputDebugToast != null) {
+            streamInputDebugToast.cancel();
+        }
+        streamInputDebugToast = Toast.makeText(this, message, Toast.LENGTH_LONG);
+        streamInputDebugToast.show();
+    }
+
+    private static String inputDeviceLabel(InputDevice device) {
+        if (device == null || device.getName() == null || device.getName().isEmpty()) {
+            return "-";
+        }
+        String name = device.getName();
+        return name.length() > 32 ? name.substring(0, 32) : name;
+    }
+
+    private void toastKeyEvent(KeyEvent event) {
+        if (!streamInputDebugEnabled()) {
+            return;
+        }
+        String action;
+        switch (event.getAction()) {
+            case KeyEvent.ACTION_DOWN:
+                action = "down";
+                break;
+            case KeyEvent.ACTION_UP:
+                action = "up";
+                break;
+            default:
+                action = String.valueOf(event.getAction());
+                break;
+        }
+        showStreamInputDebug(String.format(Locale.US,
+                "键 a=%s code=%d scan=%d src=0x%x dev=%d flags=0x%x name=%s",
+                action, event.getKeyCode(), event.getScanCode(), event.getSource(),
+                event.getDeviceId(), event.getFlags(), inputDeviceLabel(event.getDevice())));
+    }
+
+    private void toastMouseButtons(MotionEvent event, int rawButtons, int rawChanged,
+                                   int actionButton, int adjustedButtons) {
+        int action = event.getActionMasked();
+        boolean buttonEdge = rawChanged != 0 || actionButton != 0
+                || action == MotionEvent.ACTION_BUTTON_PRESS
+                || action == MotionEvent.ACTION_BUTTON_RELEASE
+                || action == MotionEvent.ACTION_DOWN
+                || action == MotionEvent.ACTION_UP;
+        if (!buttonEdge) {
+            return;
+        }
+        InputDevice device = event.getDevice();
+        showStreamInputDebug(String.format(Locale.US,
+                "鼠 a=%d btn=0x%x ab=0x%x chg=0x%x adj=0x%x src=0x%x dev=%d name=%s",
+                action, rawButtons, actionButton, rawChanged, adjustedButtons, event.getSource(),
+                device != null ? device.getId() : event.getDeviceId(), inputDeviceLabel(device)));
+    }
+
+    private void toastBackInvoked(boolean consumed) {
+        if (!streamInputDebugEnabled()) {
+            return;
+        }
+        long age = harmonyMouseFix.lastMotionAt() == 0
+                ? -1L : SystemClock.uptimeMillis() - harmonyMouseFix.lastMotionAt();
+        showStreamInputDebug(String.format(Locale.US,
+                "返回 %s a=%d btn=0x%x ab=0x%x adj=0x%x age=%d",
+                consumed ? "已拦截" : "打开菜单",
+                harmonyMouseFix.lastAction(), harmonyMouseFix.lastRawButtons(),
+                harmonyMouseFix.lastActionButton(), harmonyMouseFix.lastAdjustedButtons(), age));
+    }
+
+    private boolean applyHarmonyMouseKey(KeyEvent event) {
+        if (!connected || conn == null || !huaweiMouseFixEnabled()) {
+            return false;
+        }
+        InputDevice device = event.getDevice();
+        HarmonyMouseButtonFixer.KeyResult result = harmonyMouseFix.onKey(
+                event.getEventTime(),
+                event.getAction(),
+                event.getKeyCode(),
+                event.getRepeatCount(),
+                event.getSource(),
+                device != null ? device.getSources() : 0,
+                device != null ? device.getKeyboardType() : InputDevice.KEYBOARD_TYPE_NONE,
+                event.getDeviceId(),
+                event.getFlags());
+        if (!result.consume) {
+            return false;
+        }
+        if (event.getKeyCode() == KeyEvent.KEYCODE_BACK) {
+            harmonyBackConsumedAt = event.getEventTime();
+        }
+        if (result.releaseSpuriousLeft) {
+            conn.sendMouseButtonUp(MouseButtonPacket.BUTTON_LEFT);
+            lastButtonState &= ~MotionEvent.BUTTON_PRIMARY;
+        }
+        if (result.button != 0) {
+            if (result.down) {
+                conn.sendMouseButtonDown(result.button);
+            } else {
+                conn.sendMouseButtonUp(result.button);
+            }
+            int bit = HarmonyMouseButtonFixer.bitFor(result.button);
+            if (result.down) {
+                lastButtonState |= bit;
+            } else {
+                lastButtonState &= ~bit;
+            }
+        }
+        return true;
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        toastKeyEvent(event);
+        if (applyHarmonyMouseKey(event)) {
+            return true;
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         return handleKeyDown(event) || super.onKeyDown(keyCode, event);
@@ -2669,6 +2814,14 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
     @Override
     public boolean handleKeyDown(KeyEvent event) {
+        toastKeyEvent(event);
+        // Mouse Back/Forward is rewritten before the virtual-key passthrough.
+        // HarmonyOS delivers the wheel click as Back, sometimes with
+        // FLAG_VIRTUAL_HARD_KEY, and that must not open the stream menu.
+        if (applyHarmonyMouseKey(event)) {
+            return true;
+        }
+
         // Pass-through virtual navigation keys
         if ((event.getFlags() & KeyEvent.FLAG_VIRTUAL_HARD_KEY) != 0) {
             return false;
@@ -2768,6 +2921,11 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
     @Override
     public boolean handleKeyUp(KeyEvent event) {
+        toastKeyEvent(event);
+        if (applyHarmonyMouseKey(event)) {
+            return true;
+        }
+
         // Pass-through virtual navigation keys
         if ((event.getFlags() & KeyEvent.FLAG_VIRTUAL_HARD_KEY) != 0) {
             return false;
@@ -3440,8 +3598,34 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     // Returns true if the event was consumed
     // NB: View is only present if called from a view callback
     private boolean handleMotionEvent(View view, MotionEvent event) {
+        toastArrivingMouseButtons(event);
         if (grabbedInput && isStylusMotionEvent(event)) return handleStylusMotion(view, event);
         return handleMotionEventWithoutStylus(view, event);
+    }
+
+    private void toastArrivingMouseButtons(MotionEvent event) {
+        if (!streamInputDebugEnabled()) {
+            return;
+        }
+        int action = event.getActionMasked();
+        int actionButton = 0;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            actionButton = event.getActionButton();
+        }
+        boolean mouseLike = HarmonyMouseButtonFixer.sourceHasMouse(event.getSource())
+                || (event.getPointerCount() > 0
+                && event.getToolType(0) == MotionEvent.TOOL_TYPE_MOUSE);
+        boolean explicitButton = action == MotionEvent.ACTION_BUTTON_PRESS
+                || action == MotionEvent.ACTION_BUTTON_RELEASE
+                || actionButton != 0;
+        boolean mouseClick = mouseLike && (action == MotionEvent.ACTION_DOWN
+                || action == MotionEvent.ACTION_UP);
+        boolean stateChanged = mouseLike && event.getButtonState() != lastButtonState;
+        if (!explicitButton && !mouseClick && !stateChanged) {
+            return;
+        }
+        toastMouseButtons(event, event.getButtonState(),
+                event.getButtonState() ^ lastButtonState, actionButton, event.getButtonState());
     }
 
     private boolean handleMotionEventWithoutStylus(View view, MotionEvent event) {
@@ -3631,6 +3815,23 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                     externalTouchpadScrollRemainderY = 0f;
                 }
 
+                int actionButton = 0;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    actionButton = event.getActionButton();
+                }
+                boolean stylusTool = event.getPointerCount() > 0
+                        && (event.getToolType(0) == MotionEvent.TOOL_TYPE_STYLUS
+                        || event.getToolType(0) == MotionEvent.TOOL_TYPE_ERASER);
+                boolean physicalMouse = mouseSource || (event.getPointerCount() > 0
+                        && event.getToolType(0) == MotionEvent.TOOL_TYPE_MOUSE);
+                if (huaweiMouseFixEnabled() && physicalMouse && !stylusTool) {
+                    HarmonyMouseButtonFixer.MotionResult adjusted = harmonyMouseFix.adjustMotion(
+                            event.getEventTime(), event.getActionMasked(), actionButton,
+                            buttonState, lastButtonState);
+                    buttonState = adjusted.buttonState;
+                    changedButtons = adjusted.changedButtons;
+                }
+
                 if ((changedButtons & MotionEvent.BUTTON_PRIMARY) != 0) {
                     if ((buttonState & MotionEvent.BUTTON_PRIMARY) != 0) {
                         conn.sendMouseButtonDown(MouseButtonPacket.BUTTON_LEFT);
@@ -3660,7 +3861,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                     }
                 }
 
-                if (prefConfig.mouseNavButtons) {
+                if (prefConfig.mouseNavButtons || huaweiMouseFixEnabled()) {
                     if ((changedButtons & MotionEvent.BUTTON_BACK) != 0) {
                         if ((buttonState & MotionEvent.BUTTON_BACK) != 0) {
                             conn.sendMouseButtonDown(MouseButtonPacket.BUTTON_X1);
@@ -5282,6 +5483,28 @@ public class Game extends Activity implements SurfaceHolder.Callback,
             }
             return;
         }
+        if (connected && conn != null && huaweiMouseFixEnabled()) {
+            if (SystemClock.uptimeMillis() - harmonyBackConsumedAt
+                    <= HarmonyMouseButtonFixer.CORRELATION_WINDOW_MS) {
+                toastBackInvoked(true);
+                return;
+            }
+            HarmonyMouseButtonFixer.BackResult result =
+                    harmonyMouseFix.onBackInvoked(SystemClock.uptimeMillis());
+            if (result.action != HarmonyMouseButtonFixer.BackAction.IGNORE) {
+                if (result.releaseSpuriousLeft) {
+                    conn.sendMouseButtonUp(MouseButtonPacket.BUTTON_LEFT);
+                    lastButtonState &= ~MotionEvent.BUTTON_PRIMARY;
+                }
+                if (result.action == HarmonyMouseButtonFixer.BackAction.CLICK && result.button != 0) {
+                    conn.sendMouseButtonDown(result.button);
+                    conn.sendMouseButtonUp(result.button);
+                }
+                toastBackInvoked(true);
+                return;
+            }
+        }
+        toastBackInvoked(false);
         showGameMenu();
     }
 

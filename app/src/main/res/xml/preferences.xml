@@ -316,6 +316,11 @@
             android:summary="@string/summary_checkbox_mouse_nav_buttons"
             android:defaultValue="false" />
         <CheckBoxPreference
+            android:key="checkbox_huawei_mouse_button_fix"
+            android:title="华为鼠标中键/侧键修复"
+            android:summary="HarmonyOS 4.x / 5.0 及以下会把鼠标中键当成返回，串流时就会打开菜单。开启后，来自鼠标的返回会改成中键发给电脑；侧键会发给电脑的前进/后退键，而不再变成左键。触摸手势、导航栏和实体键盘的返回不受影响。关闭后恢复原来的行为。"
+            android:defaultValue="false" />
+        <CheckBoxPreference
             android:key="checkbox_absolute_mouse_mode"
             android:title="@string/title_checkbox_absolute_mouse_mode"
             android:summary="@string/summary_checkbox_absolute_mouse_mode"
@@ -612,6 +617,12 @@
             android:key="checkbox_enable_accessibility_show_log"
             android:title="无障碍键盘模式显示捕获的键值"
             android:summary="打开无障碍键盘，在月光app任意界面，输入按键，会弹出键值，用于自定义无障碍配置文件使用。"
+            android:defaultValue="false"/>
+
+        <CheckBoxPreference
+            android:key="checkbox_stream_input_debug_toast"
+            android:title="串流界面显示键鼠事件"
+            android:summary="串流时，把到达串流界面的全部按键，以及鼠标按键变化，用提示条显示出来。内容包括动作、键值、扫描码、来源、设备名、buttonState、actionButton。中键或侧键仍不对时，把提示条上的文字发回来。不依赖无障碍服务。"
             android:defaultValue="false"/>
 
     </PreferenceCategory>

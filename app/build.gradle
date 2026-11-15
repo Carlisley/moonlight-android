@@ -14,7 +14,7 @@ android {
         minSdk 21
         targetSdk 34
 
-        versionName "26.11.07"
+        versionName "26.11.07-mousefix"
         versionCode = 500
         buildConfigField "int", "AXI_CODE", "31"
         buildConfigField "boolean", "HAS_KISHI_HAPTICS", gradle.ext.hasKishiHaptics.toString()
@@ -59,7 +59,8 @@ android {
                 }
             }
 
-            applicationId "com.limelight"
+            // Distinct from Axixi's com.limelight.unofficialA so both apps can be installed.
+            applicationId "com.carlisley.moonlight"
 //            applicationId "com.miHoYo.GenshinImpact"
 //            applicationId "com.antutu.ABenchMark"
 //            applicationId "ru.andr7e.deviceinfohw"
@@ -93,10 +94,22 @@ android {
         }
     }
 
+    def mousefixTestKeystore = file('mousefix-test.keystore')
+    signingConfigs {
+        mousefixTest {
+            if (mousefixTestKeystore.exists()) {
+                storeFile mousefixTestKeystore
+                storePassword 'mousefix'
+                keyAlias 'mousefix'
+                keyPassword 'mousefix'
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix ".debug"
-            resValue "string", "app_label", "月光"
+            resValue "string", "app_label", "月光·阿西西(修复版)"
             resValue "string", "app_label_root", "DR·月光"
 
             minifyEnabled true
@@ -135,9 +148,12 @@ android {
             // TL;DR: Leave the following line alone!
             applicationIdSuffix ".unofficialA"
 //            resValue "string", "app_label", "安兔兔·月光"
-            resValue "string", "app_label", "月光·阿西西"
+            resValue "string", "app_label", "月光·阿西西(修复版)"
             resValue "string", "app_label_root", "Moonlight (Root)"
 
+            if (mousefixTestKeystore.exists()) {
+                signingConfig signingConfigs.mousefixTest
+            }
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
             if (privateModuleProtectionEnabled) {

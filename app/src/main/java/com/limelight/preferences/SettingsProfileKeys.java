@@ -23,6 +23,8 @@ final class SettingsProfileKeys {
         "checkbox_ds5_controller_speaker",
         "checkbox_ds5_native_pcm",
         "checkbox_enable_accessibility_show_log",
+        "checkbox_huawei_mouse_button_fix",
+        "checkbox_stream_input_debug_toast",
         "checkbox_enable_analog_stick_new",
         "checkbox_enable_analog_stick_new_fixed",
         "checkbox_enable_audio_haptics",

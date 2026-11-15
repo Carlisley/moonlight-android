@@ -111,6 +111,8 @@ public class PreferenceConfiguration {
     private static final String MOUSE_EMULATION_STRING = "checkbox_mouse_emulation";
     private static final String ANALOG_SCROLLING_PREF_STRING = "analog_scrolling";
     private static final String MOUSE_NAV_BUTTONS_STRING = "checkbox_mouse_nav_buttons";
+    public static final String HUAWEI_MOUSE_BUTTON_FIX_PREF_STRING = "checkbox_huawei_mouse_button_fix";
+    public static final String STREAM_INPUT_DEBUG_PREF_STRING = "checkbox_stream_input_debug_toast";
     static final String UNLOCK_FPS_STRING = "checkbox_unlock_fps";
     public static final String VIBRATE_OSC_PREF_STRING = "checkbox_vibrate_osc";
     private static final String VIBRATE_FALLBACK_PREF_STRING = "checkbox_vibrate_fallback";
@@ -331,6 +333,8 @@ public class PreferenceConfiguration {
     public int mouseEmulationGameMenu;
     public AnalogStickForScrolling analogStickForScrolling;
     public boolean mouseNavButtons;
+    public boolean huaweiMouseButtonFix;
+    public boolean streamInputDebugToast;
     public boolean unlockFps;
     public boolean vibrateOsc;
     public boolean vibrateFallbackToDevice;
@@ -979,6 +983,8 @@ public class PreferenceConfiguration {
         config.bindAllUsb = prefs.getBoolean(BIND_ALL_USB_STRING, DEFAULT_BIND_ALL_USB);
         config.mouseEmulation = prefs.getBoolean(MOUSE_EMULATION_STRING, DEFAULT_MOUSE_EMULATION);
         config.mouseNavButtons = prefs.getBoolean(MOUSE_NAV_BUTTONS_STRING, DEFAULT_MOUSE_NAV_BUTTONS);
+        config.huaweiMouseButtonFix = prefs.getBoolean(HUAWEI_MOUSE_BUTTON_FIX_PREF_STRING, false);
+        config.streamInputDebugToast = prefs.getBoolean(STREAM_INPUT_DEBUG_PREF_STRING, false);
         config.unlockFps = prefs.getBoolean(UNLOCK_FPS_STRING, DEFAULT_UNLOCK_FPS);
         config.vibrateOsc = prefs.getBoolean(VIBRATE_OSC_PREF_STRING, DEFAULT_VIBRATE_OSC);
         config.vibrateFallbackToDevice = prefs.getBoolean(VIBRATE_FALLBACK_PREF_STRING, DEFAULT_VIBRATE_FALLBACK);
