@@ -1,5 +1,6 @@
 # built application files
 *.apk
+app/mousefix-test.keystore
 *.ap_
 *.aab
 output.json
